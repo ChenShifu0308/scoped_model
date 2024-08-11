@@ -177,10 +177,79 @@ class ScopedModel<T extends Model> extends StatelessWidget {
             ?.widget;
 
     if (widget == null) {
-      throw ScopedModelError();
+      InheritedElement? inheritedElement;
+      context.visitAncestorElements((element) {
+        if (element.widget is _InheritedModel &&
+            (element.widget as _InheritedModel).model is T &&
+            element is InheritedElement) {
+
+          if(_ProbeModel.instance is T){
+            // This means T is Model, and ScopedModelDescendant<> didn't provide a type.
+            return false;
+          }
+          widget = element.widget;
+          inheritedElement = element as InheritedElement?;
+          return true;
+        }
+        if (element.depth == 1) {
+          return false;
+        }
+        return true;
+      });
+      if (widget == null) {
+        throw ScopedModelError();
+      } else {
+        context.dependOnInheritedElement(inheritedElement!);
+        return ((widget as _InheritedModel).model as T);
+      }
     } else {
       return (widget as _InheritedModel<T>).model;
     }
+  }
+}
+
+/// A ScopedModel that can listen to multiple models. It is useful quickly to add multiple models.
+/// It is recommended to create as many models and each model should be responsible for a specific feature.
+///
+/// Example:
+/// MultiScopedModel(
+///       models: [CounterModel(), AnotherModel()],
+///       child: Column(
+///             children: [
+///               ScopedModelDescendant<CounterModel>(
+///                 builder: (context, child, model) {
+///                   return Text('Counter: ${model.counter}');
+///                 },
+///               ),
+///               ScopedModelDescendant<AnotherModel>(
+///                 builder: (context, child, model) {
+///                   return Text('Message: ${model.message}');
+///                 },
+///               ),
+///              ],
+///           ),
+///     );
+class MultiScopedModel extends StatelessWidget {
+  final List<Model> models;
+  final Widget child;
+
+  const MultiScopedModel({required this.models, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    int count = models.length;
+    int currentModelCount = 0;
+    return _buildChild(currentModelCount, count, child);
+  }
+
+  Widget _buildChild(int currentModelCount, int totalCount, Widget child) {
+    if (currentModelCount == totalCount) {
+      return child;
+    }
+    return ScopedModel(
+      model: models[currentModelCount],
+      child: _buildChild(currentModelCount + 1, totalCount, child),
+    );
   }
 }
 
@@ -283,5 +352,17 @@ To fix, please:
 If none of these solutions work, please file a bug at:
 https://github.com/brianegan/scoped_model/issues/new
       ''';
+  }
+}
+
+/// A probe model to detect if a ScopedModelDescendant was used without a type.
+class _ProbeModel extends Model {
+  static final instance = _ProbeModel._internal();
+
+  _ProbeModel._internal();
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
   }
 }
